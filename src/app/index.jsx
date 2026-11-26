@@ -1,3 +1,5 @@
-import LoginScreen from '../screens/LoginScreen';
+import LoginScreen from '../screens/LoginScreen.jsx';
 
-export default LoginScreen;
+export default function IndexRoute() {
+  return <LoginScreen />;
+}
