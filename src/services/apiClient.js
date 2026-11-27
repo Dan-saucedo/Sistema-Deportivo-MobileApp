@@ -10,34 +10,37 @@ export const registerUnauthorizedCallback = (callback) => {
   onUnauthorizedCallback = callback;
 };
 
-// Helper compatible con iOS/Android (SecureStore) y fallback seguro
 export const getStoredToken = async () => {
   if (Platform.OS === 'web') return localStorage.getItem('utr_token');
   return await SecureStore.getItemAsync('utr_token');
 };
 
 export const apiFetch = async (endpoint, options = {}) => {
-  const { method = 'GET', body = null, headers = {} } = options;
+  const { method = 'GET', body = null, headers = {}, timeoutMs = 35000 } = options;
 
-  const tokenDeUsuario = await getStoredToken();
+  const userToken = await getStoredToken();
 
   const requestHeaders = {
     'Content-Type': 'application/json',
     'x-api-token': APP_TOKEN,
-    ...(tokenDeUsuario ? { Authorization: `Bearer ${tokenDeUsuario}` } : {}),
+    ...(userToken ? { Authorization: `Bearer ${userToken}` } : {}),
     ...headers,
   };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method,
       headers: requestHeaders,
+      signal: controller.signal,
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
 
+    clearTimeout(timer);
     const data = await response.json().catch(() => ({}));
 
-    // 401 Unauthorized: Cierra la sesión si no estamos en el formulario de login
     if (response.status === 401) {
       if (!endpoint.includes('/auth/login') && onUnauthorizedCallback) {
         onUnauthorizedCallback();
@@ -48,7 +51,6 @@ export const apiFetch = async (endpoint, options = {}) => {
       };
     }
 
-    // 403 Forbidden: alerta nativa de permisos insuficientes
     if (response.status === 403) {
       const errorMsg = data.message || 'Acceso restringido: No tienes permisos para esta acción.';
       Alert.alert('Acceso restringido', errorMsg);
@@ -64,6 +66,13 @@ export const apiFetch = async (endpoint, options = {}) => {
 
     return data;
   } catch (error) {
+    clearTimeout(timer);
+    if (error.name === 'AbortError') {
+      throw {
+        status: 408,
+        message: 'El servidor tardó demasiado en despertar. Presiona Iniciar sesión nuevamente.',
+      };
+    }
     if (error.status) throw error;
     throw {
       status: 500,
