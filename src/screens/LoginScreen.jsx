@@ -1,4 +1,3 @@
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   View,
@@ -10,54 +9,68 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
-import { apiFetch } from '../services/apiClient.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { apiFetch } from '../services/apiClient';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
+  const { login } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams();
   const successMsg = params?.registeredMessage || '';
-  const { login } = useAuth(); 
 
-  const [formDatos, setFormDatos] = useState({ email: '', password: '' });
-  const [cargando, setCargando] = useState(false);
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleChange = (name, value) => {
-    setFormDatos((prev) => ({ ...prev, [name]: value }));
-    if (errorMsg) setErrorMsg('Ups, algo salio mal, prueba mas tarde :(');
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errorMsg) setErrorMsg('');
   };
 
   const handleSubmit = async () => {
-    //Llenado de campos obligatoria
-    if (!formDatos.email.trim() || !formDatos.password.trim()) {
+    Keyboard.dismiss();
+
+    if (!formData.email.trim() || !formData.password.trim()) {
       setErrorMsg('Por favor completa tu correo electrónico y contraseña.');
       return;
     }
 
-    setCargando(true);
+    setIsLoading(true);
     setErrorMsg('');
+    console.log('[Login] Enviando petición para:', formData.email.trim());
 
     try {
       const response = await apiFetch('/api/auth/login', {
         method: 'POST',
         body: {
-          email: formDatos.email.trim(),
-          password: formDatos.password,
+          email: formData.email.trim(),
+          password: formData.password,
         },
       });
 
+      console.log('[Login] Respuesta recibida del servidor');
+      const authToken = response.token || response.accessToken || response.data?.token;
+      const rawUser = response.user || response.data?.user || {};
+
+      if (!authToken) {
+        throw new Error('El servidor no devolvió un token válido.');
+      }
+
       const normalizedUser = {
-        ...response.user,
-        rol: response.user?.rol || response.user?.role || 'USER',
+        ...rawUser,
+        rol: rawUser.rol || rawUser.role || 'USER',
       };
 
-      await login(response.token, normalizedUser);
+      await login(String(authToken), normalizedUser);
     } catch (err) {
+      console.log('[Login] Error:', err.message);
       setErrorMsg(err.message || 'No se pudo iniciar sesión. Verifica tus credenciales.');
     } finally {
-      setCargando(false);
+      setIsLoading(false);
     }
   };
 
@@ -67,7 +80,6 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {/* Cabecera Institucional UTR */}
         <View style={styles.headerBanner}>
           <View style={styles.logoRow}>
             <Text style={styles.logoAcronym}>UTR</Text>
@@ -82,7 +94,6 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        {/* Tarjeta de Formulario */}
         <View style={styles.formCard}>
           <Text style={styles.eyebrow}>BIENVENIDO DE NUEVO</Text>
           <Text style={styles.title}>Entra al juego.</Text>
@@ -107,32 +118,50 @@ export default function LoginScreen() {
             placeholderTextColor="#94A3B8"
             keyboardType="email-address"
             autoCapitalize="none"
-            value={formDatos.email}
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
+            value={formData.email}
             onChangeText={(text) => handleChange('email', text)}
-            editable={!cargando}
+            editable={!isLoading}
           />
 
           <Text style={styles.label}>Contraseña</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="**********"
-            placeholderTextColor="#94A3B8"
-            secureTextEntry
-            value={formDatos.password}
-            onChangeText={(text) => handleChange('password', text)}
-            editable={!cargando}
-          />
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="••••••••••"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              autoComplete="off"
+              value={formData.password}
+              onChangeText={(text) => handleChange('password', text)}
+              editable={!isLoading}
+            />
+            <Pressable
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword((prev) => !prev)}
+            >
+              <Text style={styles.eyeBtnText}>{showPassword ? 'Ocultar' : 'Mostrar'}</Text>
+            </Pressable>
+          </View>
 
           <Pressable
             style={({ pressed }) => [
               styles.submitBtn,
-              (cargando || pressed) && styles.submitBtnDisabled,
+              (isLoading || pressed) && styles.submitBtnDisabled,
             ]}
             onPress={handleSubmit}
-            disabled={cargando}
+            disabled={isLoading}
           >
-            {cargando ? (
-              <ActivityIndicator color="#FFFFFF" />
+            {isLoading ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator color="#FFFFFF" />
+                <Text style={styles.submitBtnText}>Conectando...</Text>
+              </View>
             ) : (
               <Text style={styles.submitBtnText}>Iniciar sesión →</Text>
             )}
@@ -197,6 +226,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#0F172A',
     marginBottom: 14,
+  },
+  passwordWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#0F172A',
+  },
+  eyeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  eyeBtnText: {
+    color: '#E11D48',
+    fontSize: 12,
+    fontWeight: '700',
   },
   submitBtn: {
     backgroundColor: '#E11D48',

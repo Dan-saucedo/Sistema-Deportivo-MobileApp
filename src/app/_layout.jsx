@@ -11,7 +11,8 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading) return;
 
-    const inPublicScreen = segments.length === 0 || segments[0] === 'register';
+    const firstSegment = segments[0];
+    const inPublicScreen = !firstSegment || firstSegment === 'index' || firstSegment === 'register';
 
     if (!isAuthenticated && !inPublicScreen) {
       router.replace('/');
@@ -28,7 +29,15 @@ function RootLayoutNav() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="register" />
+      <Stack.Screen name="dashboard" />
+      <Stack.Screen name="perfil" />
+      <Stack.Screen name="admin" />
+    </Stack>
+  );
 }
 
 export default function RootLayout() {
